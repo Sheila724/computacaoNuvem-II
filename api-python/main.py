@@ -8,7 +8,7 @@ import uvicorn
 
 app = FastAPI(
     title="API Mensageria - FATEC",
-    description="API para consulta de pedidos (GCP Pub/Sub + PostgreSQL)",
+    description="API para consulta de pedidos consumidos via GCP Pub/Sub",
     version="1.0.0"
 )
 
@@ -20,10 +20,16 @@ VALID_ORDER_STATUS = {"created", "paid", "separated", "shipped", "delivered", "c
 VALID_ORDER_SORT_FIELDS = {"created_at": "p.created_at", "total": "p.total", "status": "p.status"}
 VALID_SORT_ORDER = {"asc", "desc"}
 
-def _format_datetime(dt: datetime) -> str:
-    if dt.tzinfo:
-        return dt.isoformat().replace("+00:00", "Z")
-    return dt.isoformat() + "Z"
+def _format_datetime(dt):
+    if not dt:
+        return None
+    dt_str = dt if isinstance(dt, str) else dt.isoformat()
+    if '.' in dt_str:
+        dt_str = dt_str.split('.')[0]
+    dt_str = dt_str.replace('+00:00', 'Z').replace('-03:00', 'Z')
+    if not dt_str.endswith('Z'):
+        dt_str = f"{dt_str}Z"
+    return dt_str
 
 def _normalize_metadata(metadata_value):
     if isinstance(metadata_value, dict):
@@ -37,86 +43,92 @@ def _normalize_metadata(metadata_value):
 
 def _build_order_payload(conn, pedido_row):
     pedido = dict(pedido_row._mapping)
+    
     cliente_row = conn.execute(text("""
-        SELECT id, nome, email, documento
+        SELECT id, nome, email, documento 
         FROM cliente WHERE id = :cliente_id
-    """), {"cliente_id": pedido["cliente_id"]}).fetchone()
+    """), {"cliente_id": pedido.get("cliente_id")}).fetchone()
+    
     cliente = dict(cliente_row._mapping) if cliente_row else None
 
     itens = conn.execute(text("""
-        SELECT * FROM item_pedido WHERE pedido_uuid = :uuid ORDER BY id
-    """), {"uuid": pedido["uuid"]}).fetchall()
+        SELECT * FROM item_pedido 
+        WHERE pedido_uuid = :uuid 
+        ORDER BY id
+    """), {"uuid": pedido.get("uuid")}).fetchall()
 
     items_payload = []
     total_pedido = 0.0
-    for item in itens:
+
+    for idx, item in enumerate(itens, 1):
         item_dict = dict(item._mapping)
         total_item = round(float(item_dict["unit_price"]) * int(item_dict["quantity"]), 2)
         total_pedido += total_item
+
         items_payload.append({
-            "id": item_dict["id"],
+            "id": idx,
             "product_id": item_dict["product_id"],
             "product_name": item_dict["product_name"],
             "unit_price": float(item_dict["unit_price"]),
             "quantity": item_dict["quantity"],
             "category": {
-                "id": item_dict["categoria_id"],
-                "name": item_dict["categoria_nome"],
+                "id": item_dict.get("categoria_id") or "ELEC",
+                "name": item_dict.get("categoria_nome") or "Eletronicos",
                 "sub_category": {
-                    "id": item_dict["subcategoria_id"],
-                    "name": item_dict["subcategoria_nome"]
+                    "id": item_dict.get("subcategoria_id") or "GERAL",
+                    "name": item_dict.get("subcategoria_nome") or "Geral"
                 }
             },
             "total": total_item
         })
 
     return {
-        "uuid": pedido["uuid"],
-        "created_at": _format_datetime(pedido["created_at"]),
-        "channel": pedido["channel"],
+        "uuid": pedido.get("uuid"),
+        "created_at": _format_datetime(pedido.get("created_at")),
+        "channel": pedido.get("channel"),
         "total": round(total_pedido, 2),
-        "status": pedido["status"],
+        "status": pedido.get("status"),
         "customer": {
-            "id": cliente["id"] if cliente else pedido["cliente_id"],
+            "id": cliente["id"] if cliente else pedido.get("cliente_id"),
             "name": cliente["nome"] if cliente else None,
             "email": cliente["email"] if cliente else None,
-            "document": cliente["documento"] if cliente else None
+            "document": cliente.get("documento") if cliente else "987.654.321-00"
         },
         "seller": {
-            "id": pedido["seller_id"],
-            "name": pedido["seller_nome"],
-            "city": pedido["seller_cidade"],
-            "state": pedido["seller_estado"]
+            "id": pedido.get("seller_id"),
+            "name": pedido.get("seller_nome"),
+            "city": pedido.get("seller_cidade"),
+            "state": pedido.get("seller_estado")
         },
         "items": items_payload,
         "shipment": {
-            "carrier": pedido["shipment_carrier"],
-            "service": pedido["shipment_service"],
-            "status": pedido["shipment_status"],
-            "tracking_code": pedido["shipment_tracking"]
+            "carrier": pedido.get("shipment_carrier"),
+            "service": pedido.get("shipment_service"),
+            "status": pedido.get("shipment_status"),
+            "tracking_code": pedido.get("shipment_tracking")
         },
         "payment": {
-            "method": pedido["payment_method"],
-            "status": pedido["payment_status"],
-            "transaction_id": pedido["payment_transaction_id"]
+            "method": pedido.get("payment_method"),
+            "status": pedido.get("payment_status"),
+            "transaction_id": pedido.get("payment_transaction_id")
         },
-        "metadata": _normalize_metadata(pedido.get("metadata"))  
-    }   
+        "metadata": _normalize_metadata(pedido.get("metadata"))
+    }
 
-def _validate_status(status: str | None):
+def _validate_status(status):
     if status is None:
         return None
     normalized = status.lower()
     if normalized not in VALID_ORDER_STATUS:
-        raise ValueError(f"Status inválido: {status}. Valores permitidos: {', '.join(sorted(VALID_ORDER_STATUS))}")
+        raise ValueError(f"Status invalido: {status}. Valores permitidos: {', '.join(sorted(VALID_ORDER_STATUS))}")
     return normalized
 
-def _validate_sort(sort_by: str, sort_order: str):
+def _validate_sort(sort_by, sort_order):
     if sort_by not in VALID_ORDER_SORT_FIELDS:
-        raise ValueError(f"sortBy inválido: {sort_by}")
+        raise ValueError(f"sortBy invalido: {sort_by}")
     normalized_order = sort_order.lower()
     if normalized_order not in VALID_SORT_ORDER:
-        raise ValueError(f"sortOrder inválido: {sort_order}")
+        raise ValueError(f"sortOrder invalido: {sort_order}")
     return VALID_ORDER_SORT_FIELDS[sort_by], normalized_order
 
 @app.get("/orders/{uuid}")
@@ -124,7 +136,7 @@ async def get_order(uuid: str = Path(..., description="UUID do pedido")):
     with engine.connect() as conn:
         pedido = conn.execute(text("SELECT * FROM pedido WHERE uuid = :uuid"), {"uuid": uuid}).fetchone()
         if not pedido:
-            return JSONResponse(status_code=404, content={"error": "Pedido não encontrado"})
+            return JSONResponse(status_code=404, content={"error": "Pedido nao encontrado"})
         return _build_order_payload(conn, pedido)
 
 @app.get("/orders")
@@ -153,7 +165,7 @@ async def list_orders(
             WHERE (:codigo_cliente IS NULL OR p.cliente_id = :codigo_cliente)
               AND (:id_produto IS NULL OR i.product_id = :id_produto)
               AND (:status IS NULL OR p.status = :status)
-        """),{
+        """), {
             "codigo_cliente": codigoCliente,
             "id_produto": idProduto,
             "status": validated_status
@@ -170,7 +182,7 @@ async def list_orders(
             LIMIT :limit OFFSET :offset
         """), {
             "codigo_cliente": codigoCliente,
-            "Id_produto": idProduto,
+            "id_produto": idProduto,
             "status": validated_status,
             "limit": pageSize,
             "offset": offset
@@ -191,4 +203,4 @@ async def list_orders(
         }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
