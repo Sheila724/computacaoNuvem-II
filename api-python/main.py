@@ -12,9 +12,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
-engine = create_engine(
-    os.getenv("DB_URL", "postgresql+psycopg2://postgres:Gabi0510@localhost:5432/mensageria_pubsub")
-)
+def _create_db_engine():
+    db_url = os.getenv("DB_URL")
+    if not db_url:
+        raise RuntimeError("DB_URL nao configurada. Defina a URL do banco via variavel de ambiente.")
+    return create_engine(db_url)
+
+
+@app.on_event("startup")
+def startup_event():
+    app.state.engine = _create_db_engine()
+
+
+def _get_engine():
+    engine = getattr(app.state, "engine", None)
+    if engine is None:
+        raise RuntimeError("Engine do banco nao inicializado.")
+    return engine
 
 VALID_ORDER_STATUS = {"created", "paid", "separated", "shipped", "delivered", "canceled"}
 VALID_ORDER_SORT_FIELDS = {"created_at": "p.created_at", "total": "p.total", "status": "p.status"}
@@ -133,6 +147,7 @@ def _validate_sort(sort_by, sort_order):
 
 @app.get("/orders/{uuid}")
 async def get_order(uuid: str = Path(..., description="UUID do pedido")):
+    engine = _get_engine()
     with engine.connect() as conn:
         pedido = conn.execute(text("SELECT * FROM pedido WHERE uuid = :uuid"), {"uuid": uuid}).fetchone()
         if not pedido:
@@ -157,6 +172,7 @@ async def list_orders(
 
     offset = (page - 1) * pageSize
 
+    engine = _get_engine()
     with engine.connect() as conn:
         total_registros = conn.execute(text("""
             SELECT COUNT(DISTINCT p.uuid)
