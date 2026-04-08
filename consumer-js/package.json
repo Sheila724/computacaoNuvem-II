@@ -1,0 +1,17 @@
+{
+  "name": "consumer-js",
+  "version": "1.0.0",
+  "description": "Consumer Pub/Sub para pedidos do marketplace - FATEC Computacao em Nuvem II",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^4.9.0",
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.5"
+  }
+}
