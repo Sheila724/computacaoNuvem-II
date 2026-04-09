@@ -375,7 +375,7 @@ node src/index.js
 5. Testar API JS respondendo nos endpoints
 6. Ajustar API Python para incluir tabela produto e coluna indexed_at na resposta
 7. Criar DER (diagrama ER) -> database/diagram/DER.png
-8. Criar README.md na raiz
+8. ~~Criar README.md na raiz~~ FEITO
 9. Garantir commits dos 3 membros da equipe
 
 ### Arquivos que estavam sendo editados:
