@@ -1,4 +1,4 @@
 .env
 service-account-key.json
 node_modules/
-consumer-js/
+__pycache__/
