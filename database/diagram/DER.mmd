@@ -1,0 +1,54 @@
+erDiagram
+    cliente {
+        INT id PK
+        VARCHAR nome
+        VARCHAR email
+        VARCHAR documento
+    }
+
+    produto {
+        INT id PK
+        VARCHAR nome
+        VARCHAR categoria_id
+        VARCHAR categoria_nome
+        VARCHAR subcategoria_id
+        VARCHAR subcategoria_nome
+    }
+
+    pedido {
+        VARCHAR uuid PK
+        TIMESTAMPTZ created_at
+        VARCHAR channel
+        VARCHAR status
+        INT cliente_id FK
+        INT seller_id
+        VARCHAR seller_nome
+        VARCHAR seller_cidade
+        VARCHAR seller_estado
+        VARCHAR shipment_carrier
+        VARCHAR shipment_service
+        VARCHAR shipment_status
+        VARCHAR shipment_tracking
+        VARCHAR payment_method
+        VARCHAR payment_status
+        VARCHAR payment_transaction_id
+        JSONB metadata
+        TIMESTAMPTZ indexed_at
+    }
+
+    item_pedido {
+        INT id PK
+        VARCHAR pedido_uuid FK
+        INT product_id FK
+        VARCHAR product_name
+        NUMERIC unit_price
+        INT quantity
+        VARCHAR categoria_id
+        VARCHAR categoria_nome
+        VARCHAR subcategoria_id
+        VARCHAR subcategoria_nome
+    }
+
+    cliente ||--o{ pedido : "cliente_id"
+    pedido ||--o{ item_pedido : "pedido_uuid"
+    produto ||--o{ item_pedido : "product_id"
