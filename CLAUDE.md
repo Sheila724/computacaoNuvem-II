@@ -36,6 +36,7 @@ computacaoNuvem-II/
     main.py
     requirements.txt
     migrations/
+      001_fix_cliente_documento.sql  # Fix coluna documento (NOT NULL + DEFAULT)
   consumer-js/                   # Consumer Pub/Sub em JavaScript
     package.json
     src/
@@ -279,6 +280,7 @@ A mensagem recebida segue o mesmo formato do payload da API (ver contrato acima)
 ## Variaveis de Ambiente (.env)
 
 ```env
+# Consumer JS e API JS usam variaveis separadas:
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=mensageria_pubsub
@@ -287,6 +289,9 @@ DB_PASSWORD=(ver .env)
 PUBSUB_PROJECT_ID=serjava-demo
 PUBSUB_SUBSCRIPTION=sub-grupo1
 GOOGLE_APPLICATION_CREDENTIALS=./service-account-key.json
+
+# API Python usa DB_URL (obrigatorio - nao tem mais fallback hardcoded):
+DB_URL=postgresql+psycopg2://postgres:SENHA@localhost:5432/mensageria_pubsub
 ```
 
 ---
@@ -327,6 +332,8 @@ node src/index.js
 ```bash
 cd api-python
 pip install -r requirements.txt
+# IMPORTANTE: definir DB_URL como variavel de ambiente (nao mais hardcoded)
+export DB_URL="postgresql+psycopg2://postgres:SUA_SENHA@localhost:5432/mensageria_pubsub"
 python main.py
 # Disponivel em http://localhost:8000
 ```

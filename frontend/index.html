@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensageria - Painel de Pedidos</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #334155;
+            padding: 20px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .header h1 span {
+            color: #38bdf8;
+        }
+
+        .header .stats {
+            display: flex;
+            gap: 24px;
+        }
+
+        .stat-box {
+            text-align: center;
+        }
+
+        .stat-box .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #38bdf8;
+        }
+
+        .stat-box .label {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filters {
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 16px 32px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-group label {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            border-color: #38bdf8;
+        }
+
+        .filter-group input::placeholder {
+            color: #475569;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            align-self: flex-end;
+        }
+
+        .btn-primary {
+            background: #38bdf8;
+            color: #0f172a;
+        }
+
+        .btn-primary:hover {
+            background: #7dd3fc;
+        }
+
+        .btn-secondary {
+            background: #334155;
+            color: #94a3b8;
+        }
+
+        .btn-secondary:hover {
+            background: #475569;
+            color: #e2e8f0;
+        }
+
+        .container {
+            padding: 24px 32px;
+        }
+
+        .table-wrapper {
+            background: #1e293b;
+            border-radius: 10px;
+            border: 1px solid #334155;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #0f172a;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #94a3b8;
+            font-weight: 600;
+            border-bottom: 1px solid #334155;
+        }
+
+        td {
+            padding: 14px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid #1e293b;
+            color: #cbd5e1;
+        }
+
+        tr:hover td {
+            background: #162032;
+        }
+
+        tr.clickable {
+            cursor: pointer;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .status-created { background: #1e3a5f; color: #7dd3fc; }
+        .status-pending { background: #1e3a5f; color: #7dd3fc; }
+        .status-paid { background: #14532d; color: #86efac; }
+        .status-separated { background: #422006; color: #fdba74; }
+        .status-shipped { background: #312e81; color: #a5b4fc; }
+        .status-delivered { background: #064e3b; color: #6ee7b7; }
+        .status-canceled { background: #450a0a; color: #fca5a5; }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: #1e293b;
+            border-top: 1px solid #334155;
+        }
+
+        .pagination .info {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .pagination .controls {
+            display: flex;
+            gap: 6px;
+        }
+
+        .pagination .controls button {
+            background: #334155;
+            border: none;
+            color: #e2e8f0;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .pagination .controls button:hover:not(:disabled) {
+            background: #475569;
+        }
+
+        .pagination .controls button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .pagination .controls button.active {
+            background: #38bdf8;
+            color: #0f172a;
+            font-weight: 600;
+        }
+
+        /* Modal de detalhes */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            max-width: 700px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 28px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-header h2 {
+            font-size: 18px;
+            color: #f1f5f9;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: #f1f5f9;
+        }
+
+        .detail-section {
+            margin-bottom: 20px;
+        }
+
+        .detail-section h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #38bdf8;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 24px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .detail-item .key {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .detail-item .val {
+            font-size: 14px;
+            color: #e2e8f0;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+
+        .items-table th {
+            background: #0f172a;
+            padding: 8px 10px;
+            font-size: 10px;
+        }
+
+        .items-table td {
+            padding: 8px 10px;
+            font-size: 12px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #64748b;
+            font-size: 15px;
+        }
+
+        .loading .spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #334155;
+            border-top-color: #38bdf8;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .money { color: #4ade80; font-weight: 600; }
+        .uuid-text { font-family: monospace; font-size: 12px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1><span>Mensageria</span> - Painel de Pedidos</h1>
+    <div class="stats">
+        <div class="stat-box">
+            <div class="value" id="totalOrders">-</div>
+            <div class="label">Pedidos</div>
+        </div>
+        <div class="stat-box">
+            <div class="value" id="totalPages">-</div>
+            <div class="label">Paginas</div>
+        </div>
+    </div>
+</div>
+
+<div class="filters">
+    <div class="filter-group">
+        <label>UUID do Pedido</label>
+        <input type="text" id="filterUuid" placeholder="ORD-2025-..." style="width:200px">
+    </div>
+    <div class="filter-group">
+        <label>ID Cliente</label>
+        <input type="number" id="filterCliente" placeholder="Ex: 7788" style="width:120px">
+    </div>
+    <div class="filter-group">
+        <label>ID Produto</label>
+        <input type="number" id="filterProduto" placeholder="Ex: 9001" style="width:120px">
+    </div>
+    <div class="filter-group">
+        <label>Status</label>
+        <select id="filterStatus">
+            <option value="">Todos</option>
+            <option value="created">Created</option>
+            <option value="pending">Pending</option>
+            <option value="paid">Paid</option>
+            <option value="separated">Separated</option>
+            <option value="shipped">Shipped</option>
+            <option value="delivered">Delivered</option>
+            <option value="canceled">Canceled</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Ordenar por</label>
+        <select id="filterSort">
+            <option value="created_at">Data</option>
+            <option value="total">Total</option>
+            <option value="status">Status</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Ordem</label>
+        <select id="filterOrder">
+            <option value="desc">Mais recente</option>
+            <option value="asc">Mais antigo</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Por pagina</label>
+        <select id="filterPageSize">
+            <option value="10">10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+        </select>
+    </div>
+    <button class="btn btn-primary" onclick="buscar(1)">Buscar</button>
+    <button class="btn btn-secondary" onclick="limparFiltros()">Limpar</button>
+</div>
+
+<div class="container">
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>UUID</th>
+                    <th>Data</th>
+                    <th>Cliente</th>
+                    <th>Canal</th>
+                    <th>Itens</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Pagamento</th>
+                </tr>
+            </thead>
+            <tbody id="ordersBody">
+                <tr><td colspan="8" class="loading"><div class="spinner"></div><br>Carregando pedidos...</td></tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="paginationBar" style="display:none">
+            <div class="info" id="paginationInfo"></div>
+            <div class="controls" id="paginationControls"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de detalhes -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)fecharModal()">
+    <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+let currentPage = 1;
+
+function formatDate(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+}
+
+function formatMoney(v) {
+    return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function statusClass(s) {
+    return 'status-badge status-' + (s || 'created').toLowerCase();
+}
+
+async function buscar(page) {
+    currentPage = page || 1;
+    const uuid = document.getElementById('filterUuid').value.trim();
+
+    // Se buscou por UUID, vai direto no detalhe
+    if (uuid) {
+        try {
+            const res = await fetch(`${API}/orders/${uuid}`);
+            if (res.status === 404) {
+                document.getElementById('ordersBody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">Pedido nao encontrado</td></tr>';
+                document.getElementById('paginationBar').style.display = 'none';
+                return;
+            }
+            const order = await res.json();
+            abrirModal(order);
+            return;
+        } catch(e) {
+            document.getElementById('ordersBody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#f87171">Erro ao conectar na API</td></tr>';
+            return;
+        }
+    }
+
+    const params = new URLSearchParams();
+    const cliente = document.getElementById('filterCliente').value;
+    const produto = document.getElementById('filterProduto').value;
+    const status = document.getElementById('filterStatus').value;
+    const sortBy = document.getElementById('filterSort').value;
+    const sortOrder = document.getElementById('filterOrder').value;
+    const pageSize = document.getElementById('filterPageSize').value;
+
+    if (cliente) params.set('codigoCliente', cliente);
+    if (produto) params.set('product_id', produto);
+    if (status) params.set('status', status);
+    params.set('page', currentPage);
+    params.set('pageSize', pageSize);
+    params.set('sortBy', sortBy);
+    params.set('sortOrder', sortOrder);
+
+    document.getElementById('ordersBody').innerHTML = '<tr><td colspan="8" class="loading"><div class="spinner"></div><br>Carregando...</td></tr>';
+
+    try {
+        const res = await fetch(`${API}/orders?${params}`);
+        const data = await res.json();
+        renderTable(data);
+    } catch(e) {
+        document.getElementById('ordersBody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#f87171">Erro ao conectar na API. Verifique se esta rodando na porta 8000.</td></tr>';
+    }
+}
+
+function renderTable(data) {
+    const orders = data.orders || [];
+    const pag = data.pagination || {};
+    const tbody = document.getElementById('ordersBody');
+
+    document.getElementById('totalOrders').textContent = (pag.totalRecords || 0).toLocaleString('pt-BR');
+    document.getElementById('totalPages').textContent = pag.totalPages || 0;
+
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">Nenhum pedido encontrado</td></tr>';
+        document.getElementById('paginationBar').style.display = 'none';
+        return;
+    }
+
+    tbody.innerHTML = orders.map(o => `
+        <tr class="clickable" onclick='abrirModal(${JSON.stringify(o).replace(/'/g,"&#39;")})'>
+            <td><span class="uuid-text">${(o.uuid || '').substring(0, 18)}${(o.uuid||'').length > 18 ? '...' : ''}</span></td>
+            <td>${formatDate(o.created_at)}</td>
+            <td>${o.customer?.name || '-'}</td>
+            <td>${o.channel || '-'}</td>
+            <td>${(o.items || []).length}</td>
+            <td><span class="money">${formatMoney(o.total)}</span></td>
+            <td><span class="${statusClass(o.status)}">${o.status || '-'}</span></td>
+            <td>${o.payment?.method || '-'}</td>
+        </tr>
+    `).join('');
+
+    // Pagination
+    const bar = document.getElementById('paginationBar');
+    bar.style.display = 'flex';
+
+    const start = (pag.page - 1) * pag.pageSize + 1;
+    const end = Math.min(pag.page * pag.pageSize, pag.totalRecords);
+    document.getElementById('paginationInfo').textContent = `Mostrando ${start}-${end} de ${pag.totalRecords.toLocaleString('pt-BR')} pedidos`;
+
+    const controls = document.getElementById('paginationControls');
+    let btns = '';
+    btns += `<button ${pag.page <= 1 ? 'disabled' : ''} onclick="buscar(1)">Primeira</button>`;
+    btns += `<button ${pag.page <= 1 ? 'disabled' : ''} onclick="buscar(${pag.page - 1})">Anterior</button>`;
+
+    const maxBtns = 5;
+    let startPage = Math.max(1, pag.page - Math.floor(maxBtns / 2));
+    let endPage = Math.min(pag.totalPages, startPage + maxBtns - 1);
+    if (endPage - startPage < maxBtns - 1) startPage = Math.max(1, endPage - maxBtns + 1);
+
+    for (let i = startPage; i <= endPage; i++) {
+        btns += `<button class="${i === pag.page ? 'active' : ''}" onclick="buscar(${i})">${i}</button>`;
+    }
+
+    btns += `<button ${pag.page >= pag.totalPages ? 'disabled' : ''} onclick="buscar(${pag.page + 1})">Proxima</button>`;
+    btns += `<button ${pag.page >= pag.totalPages ? 'disabled' : ''} onclick="buscar(${pag.totalPages})">Ultima</button>`;
+    controls.innerHTML = btns;
+}
+
+function abrirModal(order) {
+    const m = document.getElementById('modalContent');
+    const items = order.items || [];
+
+    m.innerHTML = `
+        <div class="modal-header">
+            <h2>Pedido ${order.uuid}</h2>
+            <button class="modal-close" onclick="fecharModal()">&times;</button>
+        </div>
+
+        <div class="detail-section">
+            <h3>Informacoes Gerais</h3>
+            <div class="detail-grid">
+                <div class="detail-item"><span class="key">UUID</span><span class="val uuid-text">${order.uuid}</span></div>
+                <div class="detail-item"><span class="key">Data</span><span class="val">${formatDate(order.created_at)}</span></div>
+                <div class="detail-item"><span class="key">Canal</span><span class="val">${order.channel || '-'}</span></div>
+                <div class="detail-item"><span class="key">Status</span><span class="val"><span class="${statusClass(order.status)}">${order.status}</span></span></div>
+                <div class="detail-item"><span class="key">Total</span><span class="val money">${formatMoney(order.total)}</span></div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h3>Cliente</h3>
+            <div class="detail-grid">
+                <div class="detail-item"><span class="key">ID</span><span class="val">${order.customer?.id}</span></div>
+                <div class="detail-item"><span class="key">Nome</span><span class="val">${order.customer?.name || '-'}</span></div>
+                <div class="detail-item"><span class="key">Email</span><span class="val">${order.customer?.email || '-'}</span></div>
+                <div class="detail-item"><span class="key">Documento</span><span class="val">${order.customer?.document || '-'}</span></div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h3>Vendedor</h3>
+            <div class="detail-grid">
+                <div class="detail-item"><span class="key">ID</span><span class="val">${order.seller?.id}</span></div>
+                <div class="detail-item"><span class="key">Nome</span><span class="val">${order.seller?.name || '-'}</span></div>
+                <div class="detail-item"><span class="key">Cidade</span><span class="val">${order.seller?.city || '-'}</span></div>
+                <div class="detail-item"><span class="key">Estado</span><span class="val">${order.seller?.state || '-'}</span></div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h3>Itens (${items.length})</h3>
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>Produto</th>
+                        <th>Categoria</th>
+                        <th>Qtd</th>
+                        <th>Preco Unit.</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.map(i => `
+                        <tr>
+                            <td>${i.product_name || '-'}<br><span style="color:#64748b;font-size:10px">ID: ${i.product_id}</span></td>
+                            <td>${i.category?.name || '-'}<br><span style="color:#64748b;font-size:10px">${i.category?.sub_category?.name || ''}</span></td>
+                            <td>${i.quantity}</td>
+                            <td>${formatMoney(i.unit_price)}</td>
+                            <td class="money">${formatMoney(i.total)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="detail-section">
+            <h3>Envio</h3>
+            <div class="detail-grid">
+                <div class="detail-item"><span class="key">Transportadora</span><span class="val">${order.shipment?.carrier || '-'}</span></div>
+                <div class="detail-item"><span class="key">Servico</span><span class="val">${order.shipment?.service || '-'}</span></div>
+                <div class="detail-item"><span class="key">Status</span><span class="val">${order.shipment?.status || '-'}</span></div>
+                <div class="detail-item"><span class="key">Rastreio</span><span class="val">${order.shipment?.tracking_code || '-'}</span></div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h3>Pagamento</h3>
+            <div class="detail-grid">
+                <div class="detail-item"><span class="key">Metodo</span><span class="val">${order.payment?.method || '-'}</span></div>
+                <div class="detail-item"><span class="key">Status</span><span class="val">${order.payment?.status || '-'}</span></div>
+                <div class="detail-item"><span class="key">Transacao</span><span class="val uuid-text">${order.payment?.transaction_id || '-'}</span></div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('modalOverlay').classList.add('active');
+}
+
+function fecharModal() {
+    document.getElementById('modalOverlay').classList.remove('active');
+}
+
+function limparFiltros() {
+    document.getElementById('filterUuid').value = '';
+    document.getElementById('filterCliente').value = '';
+    document.getElementById('filterProduto').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterSort').value = 'created_at';
+    document.getElementById('filterOrder').value = 'desc';
+    document.getElementById('filterPageSize').value = '10';
+    buscar(1);
+}
+
+// ESC fecha modal
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharModal(); });
+
+// Carregar ao iniciar
+buscar(1);
+</script>
+
+</body>
+</html>

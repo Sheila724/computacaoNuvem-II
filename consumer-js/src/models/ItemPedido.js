@@ -9,9 +9,11 @@ const ItemPedido = sequelize.define('ItemPedido', {
   },
   pedido_uuid: {
     type: DataTypes.STRING(50),
+    references: { model: 'pedido', key: 'uuid' },
   },
   product_id: {
     type: DataTypes.INTEGER,
+    references: { model: 'produto', key: 'id' },
   },
   product_name: {
     type: DataTypes.STRING(255),

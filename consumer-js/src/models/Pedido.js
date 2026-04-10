@@ -17,6 +17,7 @@ const Pedido = sequelize.define('Pedido', {
   },
   cliente_id: {
     type: DataTypes.INTEGER,
+    references: { model: 'cliente', key: 'id' },
   },
   seller_id: {
     type: DataTypes.INTEGER,
