@@ -331,6 +331,17 @@ npm install
 node src/index.js
 ```
 
+### Publisher de teste (opcional)
+`consumer-js/publisher.js` existe apenas como utilitario para testes locais de publicacao.
+- Nao e requisito obrigatorio do projeto.
+- Pode ser usado para validar o fluxo fim a fim quando ambiente estiver pronto.
+- Variaveis esperadas: `PUBSUB_PROJECT_ID` (ou `PROJECT_ID`), `GOOGLE_APPLICATION_CREDENTIALS` e opcionalmente `PUBSUB_TOPIC`.
+
+```bash
+cd consumer-js
+node publisher.js
+```
+
 ## API Python (principal)
 ```bash
 cd api-python
@@ -354,49 +365,76 @@ node src/index.js
 # ONDE PAREI (atualizar sempre ao final de cada sessao)
 # ===================================================================
 
-## Ultima atualizacao: 2026-04-08 | IA: Claude (Opus 4.6)
+## Ultima atualizacao: 2026-04-09 | IA: GitHub Copilot (GPT-5.3-Codex)
 
 ### O que foi feito nesta sessao:
-- Criado CLAUDE.md com contexto completo do projeto
-- Criado COPILOT_INSTRUCTIONS.md (este arquivo)
-- Corrigido .gitignore (removido consumer-js/, adicionado __pycache__/)
-- Removida credencial vazada (Documentacao/Json.txt) -> movida para service-account-key.json
-- Criado database/migrations/001_create_tables.sql (DDL das 4 tabelas com indices)
-- Criado database/seed/sample_message.json (mensagem exemplo)
-- Criado consumer-js/ completo (package.json, models, handler, config, index.js)
-- Criado api-js/ completo (package.json, models, routes/orders.js, middlewares, index.js)
-- Gerado PDF do plano de sprints em Documentacao/
+- Revisao dos requisitos de entrega x implementacao atual
+- Ajustada resiliencia do consumer em `consumer-js/src/handlers/orderHandler.js`:
+  - validacao de payload obrigatorio (uuid, customer.id, items, campos de item)
+  - mensagens malformadas agora sao descartadas com `ack` para evitar loop infinito
+- Ajustada API Python em `api-python/main.py`:
+  - correcao da ordenacao por `total` com calculo dinamico via SQL
+  - correcao do `id` dos itens para usar o id real da tabela `item_pedido`
+  - normalizacao de datetime para UTC com sufixo `Z`
+  - filtro por `product_id` com `EXISTS` (evita duplicidade e melhora consistencia)
+- Criado DER em Mermaid em `database/diagram/DER.mmd` para facilitar exportacao de `DER.png`
+- Documentado no README e neste guia que `consumer-js/publisher.js` e utilitario opcional (nao obrigatorio)
+- Padronizado `consumer-js/publisher.js` para aceitar `PUBSUB_PROJECT_ID` (fallback `PROJECT_ID`) e `PUBSUB_TOPIC` opcional
+- Atualizado este arquivo de instrucoes com estado atual da sessao
 
 ### O que falta fazer:
-1. Rodar `npm install` em consumer-js/ e api-js/
-2. Rodar migration 001_create_tables.sql no PostgreSQL (criar tabela produto + coluna indexed_at)
-3. Criar arquivo .env em consumer-js/ e api-js/ (copiar do .env.example)
-4. Testar consumer conectando no Pub/Sub
-5. Testar API JS respondendo nos endpoints
-6. Ajustar API Python para incluir tabela produto e coluna indexed_at na resposta
-7. Criar DER (diagrama ER) -> database/diagram/DER.png
-8. ~~Criar README.md na raiz~~ FEITO
-9. Garantir commits dos 3 membros da equipe
+1. Rodar `npm install` em `consumer-js/` e `api-js/` (se ainda nao instalado no ambiente atual)
+2. Criar/validar `.env` em `consumer-js/` e `api-js/` a partir do `.env.example`
+3. Executar migration no PostgreSQL e validar schema final
+4. Testar fluxo fim a fim: Pub/Sub -> consumer -> PostgreSQL -> GET /orders
+5. Exportar `database/diagram/DER.mmd` para `database/diagram/DER.png`
+6. Garantir commits de todos os 3 membros para requisito final de entrega
 
 ### Arquivos que estavam sendo editados:
-- Nenhum em aberto (sessao encerrada com todos os arquivos salvos)
+- consumer-js/src/handlers/orderHandler.js
+- api-python/main.py
+- database/diagram/DER.mmd
+- COPILOT_INSTRUCTIONS.md
 
 ### Bugs/erros conhecidos:
-- Nenhum erro conhecido ate o momento
-- Consumer e API JS ainda nao foram testados (dependem de npm install + .env)
+- Nao ha bug conhecido introduzido nesta sessao
+- Fluxo completo ainda precisa de teste integrado no ambiente com Pub/Sub e PostgreSQL ativos
 
 ### Proximos passos recomendados:
-1. `cd consumer-js && npm install` e `cd api-js && npm install`
-2. Criar .env nos dois projetos
-3. Rodar migration no PostgreSQL
-4. Testar consumer: `cd consumer-js && node src/index.js`
-5. Testar API: `cd api-js && node src/index.js` e acessar http://localhost:3000/orders
+1. Rodar consumer: `cd consumer-js && node src/index.js`
+2. Publicar mensagem de teste e validar insercao nas 4 tabelas
+3. Subir API e validar `GET /orders`, `GET /orders/{uuid}` e filtros obrigatorios
+4. Gerar `DER.png` a partir do Mermaid e anexar na entrega
 
 ---
 
 # ===================================================================
 # LOG DE PROGRESSO (adicionar entradas no topo, mais recente primeiro)
 # ===================================================================
+
+## [2026-04-09] GitHub Copilot (GPT-5.3-Codex) - Padronizacao de variaveis do publisher
+- `consumer-js/publisher.js` ajustado para priorizar `PUBSUB_PROJECT_ID` (com fallback `PROJECT_ID`)
+- `consumer-js/publisher.js` ajustado para aceitar `PUBSUB_TOPIC` opcional (fallback `TOPIC_NAME` e `pedidos-topic`)
+- `consumer-js/.env.example` atualizado com `PUBSUB_TOPIC`
+- `README.md` e `COPILOT_INSTRUCTIONS.md` atualizados para esclarecer variaveis esperadas do publisher
+
+## [2026-04-09] GitHub Copilot (GPT-5.3-Codex) - Ajustes de conformidade dos requisitos
+- Revisados requisitos do enunciado e plano de sprint em relacao ao codigo atual
+- `consumer-js/src/handlers/orderHandler.js` atualizado para resiliencia:
+  - validacao de payload obrigatorio
+  - descarte com `ack` de mensagem malformada para evitar reprocessamento infinito
+- `api-python/main.py` atualizado para contrato e regras:
+  - ordenacao por total com calculo dinamico (sem depender de coluna inexistente)
+  - uso do id real de `item_pedido` na resposta
+  - normalizacao de data para UTC
+  - filtro de produto com `EXISTS`
+- Criado `database/diagram/DER.mmd` com relacionamentos obrigatorios
+- `COPILOT_INSTRUCTIONS.md` atualizado com o estado atual da sessao
+
+## [2026-04-09] GitHub Copilot (GPT-5.3-Codex) - Documentacao do publisher opcional
+- `README.md` atualizado para explicitar `consumer-js/publisher.js` como utilitario de teste
+- `COPILOT_INSTRUCTIONS.md` atualizado na secao de execucao com o mesmo direcionamento
+- Mantida a regra: publisher e opcional e nao bloqueia requisito obrigatorio da entrega
 
 ## [2026-04-08] Claude (Opus 4.6) - Sessao inicial
 - Analisado projeto existente (api-python/, .gitignore, migrations)

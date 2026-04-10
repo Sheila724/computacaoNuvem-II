@@ -30,7 +30,9 @@ GCP Pub/Sub (topic do professor)
 
 ```
 computacaoNuvem-II/
+  README.md                    Visao geral e guia de execucao
   consumer-js/                 Consumer Pub/Sub (Node.js)
+    publisher.js               Utilitario opcional para publicar pedidos de teste
   api-python/                  API REST (FastAPI)
   api-js/                      API REST (Express.js)
   database/
@@ -134,6 +136,34 @@ psql -U postgres -d mensageria_pubsub -f database/seed/insert_sample_data.sql
 ```
 
 ### 2. API Python
+
+### 2. Consumer (Node.js)
+
+```bash
+cd consumer-js
+cp .env.example .env    # editar com suas credenciais
+npm install
+npm start
+```
+
+O consumer conecta na subscription `sub-grupo1` do projeto GCP `serjava-demo` e persiste cada mensagem recebida no PostgreSQL.
+
+### 2.1 Publisher de teste (opcional)
+
+O arquivo `consumer-js/publisher.js` e um utilitario de apoio para testes locais do fluxo fim a fim.
+
+- Nao faz parte do requisito obrigatorio da entrega.
+- Serve para publicar pedidos de teste no topico e validar integracao com o consumer.
+- Variaveis esperadas: `PUBSUB_PROJECT_ID` (ou `PROJECT_ID`), `GOOGLE_APPLICATION_CREDENTIALS` e opcionalmente `PUBSUB_TOPIC`.
+
+```bash
+cd consumer-js
+node publisher.js
+```
+
+Observacao: para funcionar, configure as credenciais GCP e as variaveis de ambiente esperadas pelo script.
+
+### 3. API Python (principal)
 
 ```bash
 cd api-python

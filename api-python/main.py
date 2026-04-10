@@ -1,7 +1,10 @@
 import json
 import os
+
 from datetime import datetime
 from pathlib import Path as PathlibPath
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import FastAPI, Query, Path
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
@@ -24,10 +27,19 @@ def _create_db_engine():
         raise RuntimeError("DB_URL nao configurada. Defina a URL do banco via variavel de ambiente.")
     return create_engine(db_url)
 
-
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: inicializa o engine
     app.state.engine = _create_db_engine()
+    yield
+    # Shutdown: cleanup (se necessario)
+
+app = FastAPI(
+    title="API Mensageria - FATEC",
+    description="API para consulta de pedidos consumidos via GCP Pub/Sub",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 
 def _get_engine():
@@ -37,19 +49,22 @@ def _get_engine():
     return engine
 
 VALID_ORDER_STATUS = {"created", "paid", "separated", "shipped", "delivered", "canceled"}
-VALID_ORDER_SORT_FIELDS = {"created_at": "p.created_at", "total": "p.total", "status": "p.status"}
+VALID_ORDER_SORT_FIELDS = {"created_at": "p.created_at", "total": "total_calc", "status": "p.status"}
 VALID_SORT_ORDER = {"asc", "desc"}
 
 def _format_datetime(dt):
     if not dt:
         return None
-    dt_str = dt if isinstance(dt, str) else dt.isoformat()
-    if '.' in dt_str:
-        dt_str = dt_str.split('.')[0]
-    dt_str = dt_str.replace('+00:00', 'Z').replace('-03:00', 'Z')
-    if not dt_str.endswith('Z'):
-        dt_str = f"{dt_str}Z"
-    return dt_str
+    if isinstance(dt, str):
+        return dt
+
+    if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt_utc = dt.astimezone(timezone.utc)
+        return dt_utc.isoformat().replace("+00:00", "Z")
+
+    return str(dt)
 
 def _normalize_metadata(metadata_value):
     if isinstance(metadata_value, dict):
@@ -87,7 +102,7 @@ def _build_order_payload(conn, pedido_row):
     items_payload = []
     total_pedido = 0.0
 
-    for idx, item in enumerate(itens, 1):
+    for item in itens:
         item_dict = dict(item._mapping)
         unit_price = float(item_dict["unit_price"]) if item_dict["unit_price"] else 0.0
         quantity = int(item_dict["quantity"]) if item_dict["quantity"] else 0
@@ -95,7 +110,7 @@ def _build_order_payload(conn, pedido_row):
         total_pedido += total_item
 
         items_payload.append({
-            "id": idx,
+            "id": item_dict["id"],
             "product_id": item_dict["product_id"],
             "product_name": item_dict.get("normalized_product_name") or item_dict.get("product_name") or "Produto",
             "unit_price": unit_price,
@@ -190,14 +205,16 @@ async def list_orders(
     engine = _get_engine()
     with engine.connect() as conn:
         total_registros = conn.execute(text("""
-            SELECT COUNT(DISTINCT p.uuid)
+            SELECT COUNT(*)
             FROM pedido p
+
             LEFT JOIN item_pedido i ON i.pedido_uuid = p.uuid
             LEFT JOIN produto prod ON i.product_id = prod.id
             WHERE (:codigo_cliente IS NULL OR p.cliente_id = :codigo_cliente)
               AND (:id_produto IS NULL OR i.product_id = :id_produto)
               AND (:status IS NULL OR p.status = :status)
               AND (prod.id IS NOT NULL OR i.product_id IS NULL)
+
         """), {
             "codigo_cliente": codigoCliente,
             "id_produto": idProduto,
@@ -216,6 +233,7 @@ async def list_orders(
             ORDER BY {order_column} {order_direction}
             LIMIT :limit OFFSET :offset
         """), {
+
             "codigo_cliente": codigoCliente,
             "id_produto": idProduto,
             "status": validated_status,
@@ -238,4 +256,4 @@ async def list_orders(
         }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

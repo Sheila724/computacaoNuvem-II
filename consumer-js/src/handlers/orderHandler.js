@@ -1,5 +1,19 @@
 const { sequelize, Cliente, Produto, Pedido, ItemPedido } = require('../models');
 
+function isValidOrderPayload(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (!data.uuid || typeof data.uuid !== 'string') return false;
+  if (!data.customer || typeof data.customer.id !== 'number') return false;
+  if (!Array.isArray(data.items)) return false;
+
+  return data.items.every((item) => (
+    item
+    && typeof item.product_id === 'number'
+    && Number.isFinite(Number(item.unit_price))
+    && Number.isInteger(Number(item.quantity))
+  ));
+}
+
 async function handleOrderMessage(message) {
   const messageId = message.id;
   let data;
@@ -8,6 +22,12 @@ async function handleOrderMessage(message) {
     data = JSON.parse(message.data.toString());
   } catch (err) {
     console.error(`[${messageId}] Erro ao parsear JSON:`, err.message);
+    message.ack();
+    return;
+  }
+
+  if (!isValidOrderPayload(data)) {
+    console.error(`[${messageId}] Payload invalido. Mensagem descartada.`);
     message.ack();
     return;
   }
