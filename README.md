@@ -69,46 +69,94 @@ psql -U postgres -d mensageria_pubsub -f database/migrations/001_create_tables.s
 
 ### Pre-requisitos
 
-- Node.js 18+
-- Python 3.10+
-- PostgreSQL rodando localmente
-- Arquivo `service-account-key.json` com credenciais GCP na raiz do projeto
+- Node.js 18+ (para o consumer)
+- Python 3.10+ (para a API)
+- Docker (para PostgreSQL - recomendado) OU PostgreSQL instalado localmente
+- Arquivo `service-account-key.json` com credenciais GCP na pasta `consumer-js/`
 
-### 1. Criar o banco
+### 🚀 Opção 1: Tudo Automatizado (RECOMENDADO)
+
+Para **testar a API e banco de dados** (sem consumer):
 
 ```bash
-createdb -U postgres mensageria_pubsub
+python run.py
+```
+
+Este script irá:
+1. ✅ Criar e iniciar PostgreSQL em Docker (se não estiver rodando)
+2. ✅ Criar tabelas e inserir dados de teste
+3. ✅ Iniciar FastAPI na porta 8000 em background
+4. ✅ Abrir menu interativo com 9 testes prontos para usar
+
+**Endpoints testáveis:**
+- GET /orders/:uuid
+- GET /orders (com filtros, paginação, ordenação)
+- Documentação Swagger
+
+---
+
+### 🚀 Opção 2: Rodar o Consumer Pub/Sub
+
+Para **receber mensagens do professor via Google Cloud Pub/Sub**:
+
+```bash
+python start-consumer.py
+```
+
+Este script irá:
+1. ✅ Verificar credenciais GCP (`service-account-key.json`)
+2. ✅ Instalar dependências Node.js se necessário
+3. ✅ Conectar na subscription `sub-grupo1` do projeto `serjava-demo`
+4. ✅ Persistir mensagens de pedidos no PostgreSQL
+
+**Pré-requisitos para o consumer:**
+- Arquivo `consumer-js/service-account-key.json` com credenciais válidas
+- PostgreSQL rodando (ou começado por `python run.py`)
+
+---
+
+### Manual (Se Preferir Controle Total)
+
+### 1. Banco de Dados
+
+```bash
+# Utilizando Docker 
+docker run -d --name postgresql-projeto \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=mensageria_pubsub \
+  -p 5432:5432 postgres:18
+
+# Criar tabelas
 psql -U postgres -d mensageria_pubsub -f database/migrations/001_create_tables.sql
+
+# Inserir dados de teste
+psql -U postgres -d mensageria_pubsub -f database/seed/insert_sample_data.sql
 ```
 
-### 2. Consumer (Node.js)
-
-```bash
-cd consumer-js
-cp .env.example .env    # editar com suas credenciais
-npm install
-npm start
-```
-
-O consumer conecta na subscription `sub-grupo1` do projeto GCP `serjava-demo` e persiste cada mensagem recebida no PostgreSQL.
-
-### 3. API Python (principal)
+### 2. API Python
 
 ```bash
 cd api-python
 pip install -r requirements.txt
-python main.py
-# Disponivel em http://localhost:8000
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+# Disponível em http://localhost:8000
+```
+
+### 3. Consumer Node.js
+
+```bash
+cd consumer-js
+npm install
+npm start
 ```
 
 ### 4. API Express.js (bonus)
 
 ```bash
 cd api-js
-cp .env.example .env    # editar com suas credenciais
 npm install
 npm start
-# Disponivel em http://localhost:3000
+# Disponível em http://localhost:3000
 ```
 
 ## Endpoints da API
@@ -163,3 +211,93 @@ GOOGLE_APPLICATION_CREDENTIALS=./service-account-key.json
 - **Total do item**: `unit_price * quantity` (nao armazenado)
 - **indexed_at**: timestamp de quando o consumer salvou a mensagem no banco
 - Mensagens duplicadas sao tratadas por **upsert** (chave: UUID do pedido)
+
+## Referência Rápida
+
+### Acessar a API
+
+- 🌐 **Swagger UI**: http://localhost:8000/docs
+- 📖 **ReDoc**: http://localhost:8000/redoc
+- 🔗 **API Base**: http://localhost:8000
+
+### Testes com REST Client (VS Code)
+
+Instale a extensão **REST Client** (humao.rest-client) para fazer requisições direto do VS Code.
+
+Crie um arquivo `requests.http` na raiz do projeto:
+
+```http
+### Listar todos os pedidos
+GET http://localhost:8000/orders
+
+###
+### Listar com filtro por cliente
+GET http://localhost:8000/orders?codigoCliente=7788
+
+###
+### Listar com filtro por status
+GET http://localhost:8000/orders?status=separated
+
+###
+### Listar com filtro por produto
+GET http://localhost:8000/orders?product_id=9001
+
+###
+### Testar paginação
+GET http://localhost:8000/orders?page=1&pageSize=5
+
+###
+### Testar ordenação (descendente)
+GET http://localhost:8000/orders?sortBy=created_at&sortOrder=desc
+
+###
+### Obter um pedido específico pelo uuid
+GET http://localhost:8000/orders/ORD-2025-0001
+
+###
+### Testar erro 404
+GET http://localhost:8000/orders/NAO-EXISTE
+
+###
+### Combinação: cliente + status + paginação
+GET http://localhost:8000/orders?codigoCliente=7788&status=separated&page=1&pageSize=10&sortBy=created_at&sortOrder=desc
+```
+
+### Verificar Status
+
+```bash
+# Ver containers Docker rodando
+docker ps
+
+# Ver logs do PostgreSQL
+docker logs postgresql-projeto
+
+# Enviar comando SQL direto
+docker exec -it postgresql-projeto psql -U postgres -d mensageria_pubsub
+```
+
+### Parar Tudo
+
+```bash
+# Encerrar run.py ou start-consumer.py
+Ctrl + C
+
+# Parar PostgreSQL
+docker stop postgresql-projeto
+```
+
+### Problemas Comuns
+
+| Problema | Solução |
+|----------|---------|
+| Porta 5432 já em uso | `docker stop postgresql-projeto` |
+| Porta 8000 já em uso | Alterar porta em `run.py` ou usar diferente |
+| Erro de conexão DB | Verificar `postgresql-projeto` está rodando (docker ps) |
+| Consumer não recebe msgs | Verificar `service-account-key.json` em `consumer-js/` |
+| Erro de indent em `run.py` | Usar Python 3.10+ e verificar encoding UTF-8 |
+
+### URLs Úteis
+
+- 📊 PostgreSQL: `localhost:5432`
+- 🚀 FastAPI: `http://localhost:8000`
+- 🔐 GCP Pub/Sub: Project `serjava-demo`, Subscription `sub-grupo1`

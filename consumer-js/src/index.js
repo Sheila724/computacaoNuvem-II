@@ -9,20 +9,32 @@ const SUBSCRIPTION_NAME = process.env.PUBSUB_SUBSCRIPTION || 'sub-grupo1';
 async function start() {
   try {
     await sequelize.authenticate();
-    console.log('Conectado ao PostgreSQL com sucesso.');
+    console.log('✅ Conectado ao PostgreSQL com sucesso.');
 
     const subscription = pubsub.subscription(SUBSCRIPTION_NAME);
 
     subscription.on('message', handleOrderMessage);
 
     subscription.on('error', (err) => {
-      console.error('Erro na subscription:', err.message);
+      console.error('❌ Erro na subscription:', err.message);
     });
 
-    console.log(`Escutando mensagens na subscription: ${SUBSCRIPTION_NAME}`);
-    console.log('Pressione Ctrl+C para encerrar.');
+    console.log(`📢 Escutando mensagens na subscription: ${SUBSCRIPTION_NAME}`);
+    console.log('⏹️  Pressione Ctrl+C para encerrar.');
+    
+    // Tratamento de erros não capturados
+    process.on('uncaughtException', (err) => {
+      console.error('❌ Erro não capturado:', err.message);
+      console.log('⏳ Continuando a ouvir mensagens...');
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('❌ Rejeição não tratada:', reason);
+      console.log('⏳ Continuando a ouvir mensagens...');
+    });
+    
   } catch (err) {
-    console.error('Erro ao iniciar consumer:', err.message);
+    console.error('❌ Erro ao iniciar consumer:', err.message);
     process.exit(1);
   }
 }

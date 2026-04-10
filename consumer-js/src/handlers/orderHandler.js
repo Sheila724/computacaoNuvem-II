@@ -85,11 +85,24 @@ async function handleOrderMessage(message) {
 
     await t.commit();
     message.ack();
-    console.log(`[${messageId}] Pedido ${data.uuid} persistido com sucesso.`);
+    console.log(`[${messageId}] ✅ Pedido ${data.uuid} persistido com sucesso.`);
   } catch (err) {
-    await t.rollback();
-    console.error(`[${messageId}] Erro ao persistir pedido:`, err.message);
-    message.nack();
+    try {
+      await t.rollback();
+    } catch (rollbackErr) {
+      console.error(`[${messageId}] Erro ao fazer rollback:`, rollbackErr.message);
+    }
+    
+    console.error(`[${messageId}] ❌ Erro ao persistir pedido:`, err.message);
+    
+    // Se for timeout, tenta reprocessar a mensagem
+    if (err.message.includes('timeout') || err.message.includes('Timeout')) {
+      console.log(`[${messageId}] ⏳ Tentando reprocessar depois...`);
+      message.nack();
+    } else {
+      // Outros erros, descarta a mensagem
+      message.ack();
+    }
   }
 }
 

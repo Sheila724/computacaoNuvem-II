@@ -1,10 +1,16 @@
 import json
 import os
 from datetime import datetime
+from pathlib import Path as PathlibPath
 from fastapi import FastAPI, Query, Path
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
 import uvicorn
+
+# Carregar variáveis de ambiente do arquivo .env
+from dotenv import load_dotenv
+env_path = PathlibPath(__file__).parent / ".env"
+load_dotenv(env_path)
 
 app = FastAPI(
     title="API Mensageria - FATEC",
@@ -66,9 +72,16 @@ def _build_order_payload(conn, pedido_row):
     cliente = dict(cliente_row._mapping) if cliente_row else None
 
     itens = conn.execute(text("""
-        SELECT * FROM item_pedido 
-        WHERE pedido_uuid = :uuid 
-        ORDER BY id
+        SELECT i.*,
+               COALESCE(p.nome, i.product_name) as normalized_product_name,
+               COALESCE(p.categoria_id, i.categoria_id) as normalized_categoria_id,
+               COALESCE(p.categoria_nome, i.categoria_nome) as normalized_categoria_nome,
+               COALESCE(p.subcategoria_id, i.subcategoria_id) as normalized_subcategoria_id,
+               COALESCE(p.subcategoria_nome, i.subcategoria_nome) as normalized_subcategoria_nome
+        FROM item_pedido i
+        LEFT JOIN produto p ON i.product_id = p.id
+        WHERE i.pedido_uuid = :uuid 
+        ORDER BY i.id
     """), {"uuid": pedido.get("uuid")}).fetchall()
 
     items_payload = []
@@ -76,21 +89,23 @@ def _build_order_payload(conn, pedido_row):
 
     for idx, item in enumerate(itens, 1):
         item_dict = dict(item._mapping)
-        total_item = round(float(item_dict["unit_price"]) * int(item_dict["quantity"]), 2)
+        unit_price = float(item_dict["unit_price"]) if item_dict["unit_price"] else 0.0
+        quantity = int(item_dict["quantity"]) if item_dict["quantity"] else 0
+        total_item = round(unit_price * quantity, 2)
         total_pedido += total_item
 
         items_payload.append({
             "id": idx,
             "product_id": item_dict["product_id"],
-            "product_name": item_dict["product_name"],
-            "unit_price": float(item_dict["unit_price"]),
-            "quantity": item_dict["quantity"],
+            "product_name": item_dict.get("normalized_product_name") or item_dict.get("product_name") or "Produto",
+            "unit_price": unit_price,
+            "quantity": quantity,
             "category": {
-                "id": item_dict.get("categoria_id") or "ELEC",
-                "name": item_dict.get("categoria_nome") or "Eletronicos",
+                "id": item_dict.get("normalized_categoria_id") or "ELEC",
+                "name": item_dict.get("normalized_categoria_nome") or "Eletronicos",
                 "sub_category": {
-                    "id": item_dict.get("subcategoria_id") or "GERAL",
-                    "name": item_dict.get("subcategoria_nome") or "Geral"
+                    "id": item_dict.get("normalized_subcategoria_id") or "GERAL",
+                    "name": item_dict.get("normalized_subcategoria_nome") or "Geral"
                 }
             },
             "total": total_item
@@ -104,7 +119,7 @@ def _build_order_payload(conn, pedido_row):
         "status": pedido.get("status"),
         "customer": {
             "id": cliente["id"] if cliente else pedido.get("cliente_id"),
-            "name": cliente["nome"] if cliente else None,
+            "name": cliente["nome"] if cliente else "Cliente",
             "email": cliente["email"] if cliente else None,
             "document": cliente.get("documento") if cliente else "987.654.321-00"
         },
@@ -178,9 +193,11 @@ async def list_orders(
             SELECT COUNT(DISTINCT p.uuid)
             FROM pedido p
             LEFT JOIN item_pedido i ON i.pedido_uuid = p.uuid
+            LEFT JOIN produto prod ON i.product_id = prod.id
             WHERE (:codigo_cliente IS NULL OR p.cliente_id = :codigo_cliente)
               AND (:id_produto IS NULL OR i.product_id = :id_produto)
               AND (:status IS NULL OR p.status = :status)
+              AND (prod.id IS NOT NULL OR i.product_id IS NULL)
         """), {
             "codigo_cliente": codigoCliente,
             "id_produto": idProduto,
@@ -191,9 +208,11 @@ async def list_orders(
             SELECT DISTINCT p.*
             FROM pedido p
             LEFT JOIN item_pedido i ON i.pedido_uuid = p.uuid
+            LEFT JOIN produto prod ON i.product_id = prod.id
             WHERE (:codigo_cliente IS NULL OR p.cliente_id = :codigo_cliente)
               AND (:id_produto IS NULL OR i.product_id = :id_produto)
               AND (:status IS NULL OR p.status = :status)
+              AND (prod.id IS NOT NULL OR i.product_id IS NULL)
             ORDER BY {order_column} {order_direction}
             LIMIT :limit OFFSET :offset
         """), {

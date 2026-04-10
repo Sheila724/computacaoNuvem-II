@@ -9,6 +9,15 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT || 5432,
     dialect: 'postgres',
     logging: false,
+    pool: {
+      max: 20,        // Máximo de conexões
+      min: 5,         // Mínimo de conexões
+      acquire: 60000, // Timeout para adquirir conexão (60s)
+      idle: 10000,    // Timeout inativo (10s)
+    },
+    dialectOptions: {
+      connectTimeout: 60000, // Timeout de conexão (60s)
+    },
   }
 );
 
