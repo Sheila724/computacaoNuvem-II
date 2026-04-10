@@ -117,6 +117,9 @@ Este script irá:
 
 ---
 
+### Como acessar o projeto localmente
+# http://localhost:8000/app/
+
 ### Manual (Se Preferir Controle Total)
 
 ### 1. Banco de Dados
