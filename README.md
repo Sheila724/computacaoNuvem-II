@@ -1,65 +1,218 @@
 # Projeto Mensageria - Marketplace
 
-Trabalho da disciplina **Computacao em Nuvem II** - FATEC DSM 6o semestre.
+**Computacao em Nuvem II** - FATEC DSM 6o semestre
 
-Sistema que consome pedidos de um marketplace via **GCP Pub/Sub**, persiste em **PostgreSQL** e expoe uma **API REST** para consulta.
+**Equipe:** Gabriel Fillip | Leonardo Cassio | Sheila Alves
 
-## Equipe
+---
 
-- Gabriel Fillip
-- Leonardo Cassio
-- Sheila Alves
+## 1. Arquitetura do Sistema
 
-## Arquitetura
+Sistema de mensageria para um marketplace. Consome pedidos publicados pelo professor no **GCP Pub/Sub**, persiste os dados em **PostgreSQL** e disponibiliza uma **API REST** com **frontend web** para consulta.
 
 ```
-GCP Pub/Sub (topic do professor)
-        |
-        v
-  consumer-js/          Node.js - escuta mensagens e persiste no banco
-        |
-        v
-  PostgreSQL (mensageria_pubsub)
-        ^
-        |
-  api-python/           FastAPI - API REST (principal)
-  api-js/               Express.js - API REST (bonus)
+                     +---------------------------+
+                     |      GCP Pub/Sub           |
+                     |  Projeto: serjava-demo     |
+                     |  Subscription: sub-grupo1  |
+                     +-------------+-------------+
+                                   |
+                          mensagens JSON de pedidos
+                                   |
+                                   v
+                     +---------------------------+
+                     |     Consumer (Node.js)     |
+                     |  @google-cloud/pubsub      |
+                     |  Sequelize ORM             |
+                     |                           |
+                     |  - Parse do JSON           |
+                     |  - Upsert cliente/produto  |
+                     |  - Insert pedido/itens     |
+                     |  - Transaction completa    |
+                     |  - Ack/Nack automatico     |
+                     +-------------+-------------+
+                                   |
+                          persiste via SQL
+                                   |
+                                   v
+                     +---------------------------+
+                     |   PostgreSQL               |
+                     |   DB: mensageria_pubsub    |
+                     |                           |
+                     |   4 tabelas:               |
+                     |   cliente | produto        |
+                     |   pedido  | item_pedido    |
+                     +-------------+-------------+
+                                   |
+                          consulta via SQLAlchemy
+                                   |
+                                   v
+                     +---------------------------+
+                     |   API REST (Python)        |
+                     |   FastAPI + SQLAlchemy      |
+                     |                           |
+                     |   GET /orders              |
+                     |   GET /orders/:uuid        |
+                     |   Paginacao, filtros,      |
+                     |   ordenacao                |
+                     +-------------+-------------+
+                                   |
+                          JSON via HTTP
+                                   |
+                                   v
+                     +---------------------------+
+                     |   Frontend (Dashboard)     |
+                     |   HTML/CSS/JS puro         |
+                     |                           |
+                     |   Tabela de pedidos        |
+                     |   Filtros e paginacao      |
+                     |   Modal de detalhes        |
+                     |   Status com cores         |
+                     +---------------------------+
 ```
 
-## Estrutura do Projeto
+### Stack Tecnologica
 
+| Componente     | Tecnologia                        | Porta  |
+|----------------|-----------------------------------|--------|
+| Consumer       | Node.js + @google-cloud/pubsub    | -      |
+| API REST       | Python 3 + FastAPI + SQLAlchemy   | 8000   |
+| Frontend       | HTML/CSS/JS (servido pela API)    | 8000   |
+| Banco de Dados | PostgreSQL 18                     | 5432   |
+| Mensageria     | GCP Pub/Sub (serjava-demo)        | -      |
+
+---
+
+## 2. Consumer JavaScript
+
+O consumer e o componente central do projeto. Ele escuta mensagens da subscription `sub-grupo1` do GCP Pub/Sub e persiste cada pedido no PostgreSQL.
+
+### Fluxo de processamento
+
+1. Conecta ao PostgreSQL via Sequelize e sincroniza os modelos
+2. Cria um subscriber na subscription `sub-grupo1` do projeto `serjava-demo`
+3. Para cada mensagem recebida:
+   - Faz **parse** do JSON do pedido
+   - Valida campos obrigatorios (uuid, customer.id, items)
+   - Abre uma **transaction** no banco
+   - **Upsert** do cliente (pelo `customer.id`)
+   - **Upsert** de cada produto (pelo `product_id` dos items)
+   - **Upsert** do pedido (pelo `uuid`) com `indexed_at = new Date()`
+   - **Insert** de cada item do pedido
+   - Faz `message.ack()` em caso de sucesso
+   - Faz `message.nack()` em caso de erro (reprocessamento automatico)
+
+### Tratamento de duplicatas
+
+Pedidos com mesmo UUID sao tratados via upsert — se o pedido ja existe, os dados sao atualizados sem gerar duplicata.
+
+### Volume processado
+
+O consumer processou com sucesso **185.882 pedidos** enviados pelo professor, demonstrando a robustez do pipeline.
+
+### Configuracao
+
+```bash
+cd consumer-js
+npm install
+node src/index.js
 ```
-computacaoNuvem-II/
-  README.md                    Visao geral e guia de execucao
-  consumer-js/                 Consumer Pub/Sub (Node.js)
-    publisher.js               Utilitario opcional para publicar pedidos de teste
-  api-python/                  API REST (FastAPI)
-  api-js/                      API REST (Express.js)
-  database/
-    migrations/                DDL das tabelas
-    seed/                      Mensagem exemplo
-    diagram/                   Diagrama ER
-  Documentacao/                Enunciado e plano de sprints
+
+Requer o arquivo `service-account-key.json` com credenciais do service account `sa-pubsub-grupo1@serjava-demo.iam.gserviceaccount.com`.
+
+---
+
+## 3. Banco de Dados PostgreSQL
+
+Database `mensageria_pubsub` com 4 tabelas relacionais.
+
+### Diagrama Entidade-Relacionamento (DER)
+
+<!-- Substituir pelo DER real quando disponivel -->
+![DER - Diagrama Entidade-Relacionamento](database/diagram/DER.png)
+
+> Caso a imagem nao carregue, o arquivo esta em `database/diagram/DER.png` ou `database/diagram/DER.jpg`.
+
+### Tabelas
+
+#### cliente
+| Coluna    | Tipo         | Constraints                         |
+|-----------|-------------|-------------------------------------|
+| id        | INTEGER     | PRIMARY KEY                         |
+| nome      | VARCHAR(255)| NOT NULL                            |
+| email     | VARCHAR(255)|                                     |
+| documento | VARCHAR(20) | NOT NULL DEFAULT '987.654.321-00'   |
+
+#### produto
+| Coluna            | Tipo         | Constraints |
+|-------------------|-------------|-------------|
+| id                | INTEGER     | PRIMARY KEY |
+| nome              | VARCHAR(255)| NOT NULL    |
+| categoria_id      | VARCHAR(20) |             |
+| categoria_nome    | VARCHAR(100)|             |
+| subcategoria_id   | VARCHAR(20) |             |
+| subcategoria_nome | VARCHAR(100)|             |
+
+#### pedido
+| Coluna                 | Tipo                      | Constraints           |
+|------------------------|---------------------------|-----------------------|
+| uuid                   | VARCHAR(50)               | PRIMARY KEY           |
+| created_at             | TIMESTAMP WITH TIME ZONE  |                       |
+| channel                | VARCHAR(50)               |                       |
+| status                 | VARCHAR(20)               |                       |
+| cliente_id             | INTEGER                   | FK -> cliente(id)     |
+| seller_id              | INTEGER                   |                       |
+| seller_nome            | VARCHAR(255)              |                       |
+| seller_cidade          | VARCHAR(100)              |                       |
+| seller_estado          | VARCHAR(5)                |                       |
+| shipment_carrier       | VARCHAR(100)              |                       |
+| shipment_service       | VARCHAR(50)               |                       |
+| shipment_status        | VARCHAR(50)               |                       |
+| shipment_tracking      | VARCHAR(100)              |                       |
+| payment_method         | VARCHAR(50)               |                       |
+| payment_status         | VARCHAR(50)               |                       |
+| payment_transaction_id | VARCHAR(100)              |                       |
+| metadata               | JSONB                     |                       |
+| indexed_at             | TIMESTAMP WITH TIME ZONE  | DEFAULT NOW()         |
+
+#### item_pedido
+| Coluna            | Tipo          | Constraints              |
+|-------------------|--------------|--------------------------|
+| id                | SERIAL       | PRIMARY KEY              |
+| pedido_uuid       | VARCHAR(50)  | FK -> pedido(uuid)       |
+| product_id        | INTEGER      | FK -> produto(id)        |
+| product_name      | VARCHAR(255) |                          |
+| unit_price        | NUMERIC(12,2)|                          |
+| quantity          | INTEGER      |                          |
+| categoria_id      | VARCHAR(20)  |                          |
+| categoria_nome    | VARCHAR(100) |                          |
+| subcategoria_id   | VARCHAR(20)  |                          |
+| subcategoria_nome | VARCHAR(100) |                          |
+
+### Relacionamentos
+
+- `pedido.cliente_id` -> `cliente.id` (N pedidos : 1 cliente)
+- `item_pedido.pedido_uuid` -> `pedido.uuid` (N itens : 1 pedido)
+- `item_pedido.product_id` -> `produto.id` (N itens : 1 produto)
+
+### Queries uteis para verificacao
+
+```sql
+-- Total de pedidos no banco
+SELECT COUNT(*) FROM pedido;
+
+-- Total de clientes distintos
+SELECT COUNT(*) FROM cliente;
+
+-- Total de produtos distintos
+SELECT COUNT(DISTINCT product_id) FROM item_pedido;
+
+-- Distribuicao por status
+SELECT status, COUNT(*) FROM pedido GROUP BY status ORDER BY COUNT(*) DESC;
+
+-- Pedidos por canal
+SELECT channel, COUNT(*) FROM pedido GROUP BY channel;
 ```
-
-## Stack
-
-| Componente       | Tecnologia                          |
-|------------------|-------------------------------------|
-| Consumer         | Node.js + @google-cloud/pubsub      |
-| API (principal)  | Python + FastAPI + SQLAlchemy        |
-| API (bonus)      | Node.js + Express.js + Sequelize     |
-| Banco de dados   | PostgreSQL                           |
-| Mensageria       | GCP Pub/Sub                          |
-
-## Banco de Dados
-
-Database: `mensageria_pubsub` com 4 tabelas:
-
-- **cliente** - dados do comprador (id, nome, email, documento)
-- **produto** - catalogo de produtos com categoria/subcategoria
-- **pedido** - pedido completo com seller, shipment, payment e metadata
-- **item_pedido** - itens do pedido com preco e quantidade
 
 ### Aplicar migrations
 
@@ -67,270 +220,232 @@ Database: `mensageria_pubsub` com 4 tabelas:
 psql -U postgres -d mensageria_pubsub -f database/migrations/001_create_tables.sql
 ```
 
-## Como Rodar
+---
+
+## 4. API REST (FastAPI/Python)
+
+A API expoe os dados persistidos pelo consumer atraves de endpoints REST com paginacao, filtros e ordenacao.
+
+### Endpoints
+
+#### GET /orders
+
+Lista pedidos com suporte a filtros, paginacao e ordenacao.
+
+| Parametro     | Tipo   | Default    | Descricao                       |
+|---------------|--------|------------|---------------------------------|
+| codigoCliente | int    | -          | Filtrar por ID do cliente       |
+| product_id    | int    | -          | Filtrar por ID do produto       |
+| status        | string | -          | Filtrar por status do pedido    |
+| page          | int    | 1          | Pagina atual                    |
+| pageSize      | int    | 10         | Itens por pagina (max 100)      |
+| sortBy        | string | created_at | Campo de ordenacao              |
+| sortOrder     | string | desc       | Direcao: asc ou desc            |
+
+**Status validos:** `created`, `paid`, `separated`, `shipped`, `delivered`, `canceled`
+
+#### GET /orders/:uuid
+
+Retorna um pedido especifico pelo UUID com todos os dados aninhados.
+
+### Contrato de resposta (payload)
+
+Cada pedido segue exatamente o contrato definido pelo professor:
+
+```json
+{
+  "uuid": "ORD-2025-0001",
+  "created_at": "2025-10-01T10:15:00Z",
+  "channel": "mobile_app",
+  "total": 5000.00,
+  "status": "separated",
+  "customer": {
+    "id": 7788,
+    "name": "Maria Oliveira",
+    "email": "maria@email.com",
+    "document": "987.654.321-00"
+  },
+  "seller": {
+    "id": 55,
+    "name": "Tech Store",
+    "city": "Sao Paulo",
+    "state": "SP"
+  },
+  "items": [
+    {
+      "id": 1,
+      "product_id": 9001,
+      "product_name": "Smartphone X",
+      "unit_price": 2500.00,
+      "quantity": 2,
+      "category": {
+        "id": "ELEC",
+        "name": "Eletronicos",
+        "sub_category": {
+          "id": "PHONE",
+          "name": "Smartphones"
+        }
+      },
+      "total": 5000.00
+    }
+  ],
+  "shipment": {
+    "carrier": "Correios",
+    "service": "SEDEX",
+    "status": "shipped",
+    "tracking_code": "BR123456789"
+  },
+  "payment": {
+    "method": "pix",
+    "status": "approved",
+    "transaction_id": "pay_987654321"
+  },
+  "metadata": {
+    "source": "app",
+    "user_agent": "Mozilla/5.0...",
+    "ip_address": "10.0.0.1"
+  }
+}
+```
+
+### Regras de negocio
+
+- **Total do pedido**: calculado dinamicamente como `SUM(unit_price * quantity)` dos itens — nao e armazenado no banco
+- **Total do item**: calculado como `unit_price * quantity`
+- **indexed_at**: timestamp de quando o consumer persistiu a mensagem (rastreabilidade)
+
+### Exemplos de requisicao
+
+```
+GET /orders
+GET /orders?status=created
+GET /orders?codigoCliente=7788
+GET /orders?product_id=9001&page=2&pageSize=20
+GET /orders?sortBy=created_at&sortOrder=asc
+GET /orders/ORD-2025-0001
+```
+
+### Executar a API
+
+```bash
+cd api-python
+pip install -r requirements.txt
+python main.py
+# Disponivel em http://localhost:8000
+# Swagger UI em http://localhost:8000/docs
+```
+
+---
+
+## 5. Frontend (Dashboard)
+
+Dashboard web servido pela propria API em `http://localhost:8000/app`.
+
+### Funcionalidades
+
+- **Tabela de pedidos** com colunas: UUID, cliente, canal, status, total, data
+- **Paginacao** com controle de pagina e itens por pagina
+- **Filtros**: por UUID, ID do cliente, ID do produto e status
+- **Ordenacao**: por data, total ou status (asc/desc)
+- **Modal de detalhes**: ao clicar em um pedido, exibe todas as informacoes:
+  - Dados do cliente (nome, email, documento)
+  - Dados do vendedor (nome, cidade, estado)
+  - Tabela de itens com precos e categorias
+  - Informacoes de envio (transportadora, rastreio)
+  - Informacoes de pagamento (metodo, status, transacao)
+  - Metadata (source, user_agent, ip)
+- **Status com badges coloridos**:
+  - `created` / `pending` = azul
+  - `paid` = verde
+  - `separated` = laranja
+  - `shipped` = roxo
+  - `delivered` = teal
+  - `canceled` = vermelho
+- Formatacao monetaria em **R$ (BRL)** e datas em **pt-BR**
+
+---
+
+## 6. Como Executar o Projeto Completo
 
 ### Pre-requisitos
 
-- Node.js 18+ (para o consumer)
-- Python 3.10+ (para a API)
-- Docker (para PostgreSQL - recomendado) OU PostgreSQL instalado localmente
-- Arquivo `service-account-key.json` com credenciais GCP na pasta `consumer-js/`
+- Node.js 18+
+- Python 3.10+
+- PostgreSQL rodando na porta 5432
+- Arquivo `service-account-key.json` na pasta `consumer-js/`
 
-### 🚀 Opção 1: Tudo Automatizado (RECOMENDADO)
-
-Para **testar a API e banco de dados** (sem consumer):
+### Passo a passo
 
 ```bash
-python run.py
-```
-
-Este script irá:
-1. ✅ Criar e iniciar PostgreSQL em Docker (se não estiver rodando)
-2. ✅ Criar tabelas e inserir dados de teste
-3. ✅ Iniciar FastAPI na porta 8000 em background
-4. ✅ Abrir menu interativo com 9 testes prontos para usar
-
-**Endpoints testáveis:**
-- GET /orders/:uuid
-- GET /orders (com filtros, paginação, ordenação)
-- Documentação Swagger
-
----
-
-### 🚀 Opção 2: Rodar o Consumer Pub/Sub
-
-Para **receber mensagens do professor via Google Cloud Pub/Sub**:
-
-```bash
-python start-consumer.py
-```
-
-Este script irá:
-1. ✅ Verificar credenciais GCP (`service-account-key.json`)
-2. ✅ Instalar dependências Node.js se necessário
-3. ✅ Conectar na subscription `sub-grupo1` do projeto `serjava-demo`
-4. ✅ Persistir mensagens de pedidos no PostgreSQL
-
-**Pré-requisitos para o consumer:**
-- Arquivo `consumer-js/service-account-key.json` com credenciais válidas
-- PostgreSQL rodando (ou começado por `python run.py`)
-
----
-
-### Como acessar o projeto localmente
-#### http://localhost:8000/app/
-
-### Manual (Se Preferir Controle Total)
-
-### 1. Banco de Dados
-
-```bash
-# Utilizando Docker 
+# 1. Banco de dados (se usar Docker)
 docker run -d --name postgresql-projeto \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=mensageria_pubsub \
   -p 5432:5432 postgres:18
 
-# Criar tabelas
+# 2. Criar tabelas
 psql -U postgres -d mensageria_pubsub -f database/migrations/001_create_tables.sql
 
-# Inserir dados de teste
-psql -U postgres -d mensageria_pubsub -f database/seed/insert_sample_data.sql
-```
-
-### 2. API Python
-
-### 2. Consumer (Node.js)
-
-```bash
+# 3. Consumer (consome mensagens do Pub/Sub)
 cd consumer-js
-cp .env.example .env    # editar com suas credenciais
 npm install
-npm start
-```
+node src/index.js
 
-O consumer conecta na subscription `sub-grupo1` do projeto GCP `serjava-demo` e persiste cada mensagem recebida no PostgreSQL.
-
-### 2.1 Publisher de teste (opcional)
-
-O arquivo `consumer-js/publisher.js` e um utilitario de apoio para testes locais do fluxo fim a fim.
-
-- Nao faz parte do requisito obrigatorio da entrega.
-- Serve para publicar pedidos de teste no topico e validar integracao com o consumer.
-- Variaveis esperadas: `PUBSUB_PROJECT_ID` (ou `PROJECT_ID`), `GOOGLE_APPLICATION_CREDENTIALS` e opcionalmente `PUBSUB_TOPIC`.
-
-```bash
-cd consumer-js
-node publisher.js
-```
-
-Observacao: para funcionar, configure as credenciais GCP e as variaveis de ambiente esperadas pelo script.
-
-### 3. API Python (principal)
-
-```bash
+# 4. API + Frontend
 cd api-python
 pip install -r requirements.txt
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-# Disponível em http://localhost:8000
+python main.py
 ```
 
-### 3. Consumer Node.js
+### Acessos
 
-```bash
-cd consumer-js
-npm install
-npm start
-```
+| Recurso          | URL                                |
+|------------------|------------------------------------|
+| Dashboard        | http://localhost:8000/app           |
+| API REST         | http://localhost:8000/orders        |
+| Swagger (docs)   | http://localhost:8000/docs          |
 
-### 4. API Express.js (bonus)
+### Variaveis de ambiente
 
-```bash
-cd api-js
-npm install
-npm start
-# Disponível em http://localhost:3000
-```
+Criar `.env` em `consumer-js/` e `api-python/`:
 
-## Endpoints da API
-
-### GET /orders
-
-Lista pedidos com paginacao e filtros.
-
-| Parametro     | Tipo   | Default    | Descricao              |
-|---------------|--------|------------|------------------------|
-| codigoCliente | int    | -          | Filtrar por cliente    |
-| product_id    | int    | -          | Filtrar por produto    |
-| status        | string | -          | Filtrar por status     |
-| page          | int    | 1          | Pagina                 |
-| pageSize      | int    | 10         | Itens por pagina (max 100) |
-| sortBy        | string | created_at | Campo de ordenacao     |
-| sortOrder     | string | desc       | asc ou desc            |
-
-**Status validos:** `created`, `paid`, `separated`, `shipped`, `delivered`, `canceled`
-
-Exemplo:
-```
-GET /orders?codigoCliente=7788&status=created&page=1&pageSize=20&sortBy=created_at&sortOrder=desc
-```
-
-### GET /orders/:uuid
-
-Retorna um pedido especifico pelo UUID.
-
-```
-GET /orders/ORD-2025-0001
-```
-
-## Variaveis de Ambiente
-
-Criar `.env` a partir do `.env.example` em cada subpasta:
-
-```
+```env
+# Consumer JS
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=mensageria_pubsub
 DB_USER=postgres
-DB_PASSWORD=sua_senha
+DB_PASSWORD=postgres
 PUBSUB_PROJECT_ID=serjava-demo
 PUBSUB_SUBSCRIPTION=sub-grupo1
 GOOGLE_APPLICATION_CREDENTIALS=./service-account-key.json
+
+# API Python
+DB_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/mensageria_pubsub
 ```
 
-## Regras de Negocio
+---
 
-- **Total do pedido**: calculado como `SUM(unit_price * quantity)` dos itens (nao armazenado)
-- **Total do item**: `unit_price * quantity` (nao armazenado)
-- **indexed_at**: timestamp de quando o consumer salvou a mensagem no banco
-- Mensagens duplicadas sao tratadas por **upsert** (chave: UUID do pedido)
+## Estrutura do Repositorio
 
-## Referência Rápida
-
-### Acessar a API
-
-- 🌐 **Swagger UI**: http://localhost:8000/docs
-- 📖 **ReDoc**: http://localhost:8000/redoc
-- 🔗 **API Base**: http://localhost:8000
-
-### Testes com REST Client (VS Code)
-
-Instale a extensão **REST Client** (humao.rest-client) para fazer requisições direto do VS Code.
-
-Crie um arquivo `requests.http` na raiz do projeto:
-
-```http
-### Listar todos os pedidos
-GET http://localhost:8000/orders
-
-###
-### Listar com filtro por cliente
-GET http://localhost:8000/orders?codigoCliente=7788
-
-###
-### Listar com filtro por status
-GET http://localhost:8000/orders?status=separated
-
-###
-### Listar com filtro por produto
-GET http://localhost:8000/orders?product_id=9001
-
-###
-### Testar paginação
-GET http://localhost:8000/orders?page=1&pageSize=5
-
-###
-### Testar ordenação (descendente)
-GET http://localhost:8000/orders?sortBy=created_at&sortOrder=desc
-
-###
-### Obter um pedido específico pelo uuid
-GET http://localhost:8000/orders/ORD-2025-0001
-
-###
-### Testar erro 404
-GET http://localhost:8000/orders/NAO-EXISTE
-
-###
-### Combinação: cliente + status + paginação
-GET http://localhost:8000/orders?codigoCliente=7788&status=separated&page=1&pageSize=10&sortBy=created_at&sortOrder=desc
 ```
-
-### Verificar Status
-
-```bash
-# Ver containers Docker rodando
-docker ps
-
-# Ver logs do PostgreSQL
-docker logs postgresql-projeto
-
-# Enviar comando SQL direto
-docker exec -it postgresql-projeto psql -U postgres -d mensageria_pubsub
+computacaoNuvem-II/
+  README.md
+  consumer-js/                 Consumer Pub/Sub (Node.js)
+    src/
+      index.js                 Entry point
+      config/database.js       Conexao Sequelize
+      config/pubsub.js         Cliente Pub/Sub
+      models/                  Modelos: Pedido, Cliente, Produto, ItemPedido
+      handlers/orderHandler.js Parse e persistencia
+  api-python/                  API REST (FastAPI)
+    main.py                    Endpoints e logica
+    requirements.txt           Dependencias Python
+  frontend/
+    index.html                 Dashboard completo (single-file)
+  database/
+    migrations/                DDL das tabelas
+    seed/                      Dados de teste
+    diagram/                   DER (diagrama ER)
+  Documentacao/                Roteiro de apresentacao e docs
 ```
-
-### Parar Tudo
-
-```bash
-# Encerrar run.py ou start-consumer.py
-Ctrl + C
-
-# Parar PostgreSQL
-docker stop postgresql-projeto
-```
-
-### Problemas Comuns
-
-| Problema | Solução |
-|----------|---------|
-| Porta 5432 já em uso | `docker stop postgresql-projeto` |
-| Porta 8000 já em uso | Alterar porta em `run.py` ou usar diferente |
-| Erro de conexão DB | Verificar `postgresql-projeto` está rodando (docker ps) |
-| Consumer não recebe msgs | Verificar `service-account-key.json` em `consumer-js/` |
-| Erro de indent em `run.py` | Usar Python 3.10+ e verificar encoding UTF-8 |
-
-### URLs Úteis
-
-- 📊 PostgreSQL: `localhost:5432`
-- 🚀 FastAPI: `http://localhost:8000`
-- 🔐 GCP Pub/Sub: Project `serjava-demo`, Subscription `sub-grupo1`
