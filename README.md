@@ -10,66 +10,7 @@
 
 Sistema de mensageria para um marketplace. Consome pedidos publicados pelo professor no **GCP Pub/Sub**, persiste os dados em **PostgreSQL** e disponibiliza uma **API REST** com **frontend web** para consulta.
 
-```
-                     +---------------------------+
-                     |      GCP Pub/Sub           |
-                     |  Projeto: serjava-demo     |
-                     |  Subscription: sub-grupo1  |
-                     +-------------+-------------+
-                                   |
-                          mensagens JSON de pedidos
-                                   |
-                                   v
-                     +---------------------------+
-                     |     Consumer (Node.js)     |
-                     |  @google-cloud/pubsub      |
-                     |  Sequelize ORM             |
-                     |                           |
-                     |  - Parse do JSON           |
-                     |  - Upsert cliente/produto  |
-                     |  - Insert pedido/itens     |
-                     |  - Transaction completa    |
-                     |  - Ack/Nack automatico     |
-                     +-------------+-------------+
-                                   |
-                          persiste via SQL
-                                   |
-                                   v
-                     +---------------------------+
-                     |   PostgreSQL               |
-                     |   DB: mensageria_pubsub    |
-                     |                           |
-                     |   4 tabelas:               |
-                     |   cliente | produto        |
-                     |   pedido  | item_pedido    |
-                     +-------------+-------------+
-                                   |
-                          consulta via SQLAlchemy
-                                   |
-                                   v
-                     +---------------------------+
-                     |   API REST (Python)        |
-                     |   FastAPI + SQLAlchemy      |
-                     |                           |
-                     |   GET /orders              |
-                     |   GET /orders/:uuid        |
-                     |   Paginacao, filtros,      |
-                     |   ordenacao                |
-                     +-------------+-------------+
-                                   |
-                          JSON via HTTP
-                                   |
-                                   v
-                     +---------------------------+
-                     |   Frontend (Dashboard)     |
-                     |   HTML/CSS/JS puro         |
-                     |                           |
-                     |   Tabela de pedidos        |
-                     |   Filtros e paginacao      |
-                     |   Modal de detalhes        |
-                     |   Status com cores         |
-                     +---------------------------+
-```
+![Arquitetura do Sistema](Documenta%C3%A7%C3%A3o/arquitetura_pubsub_pipeline.png)
 
 ### Stack Tecnologica
 
@@ -126,12 +67,13 @@ Requer o arquivo `service-account-key.json` com credenciais do service account `
 
 Database `mensageria_pubsub` com 4 tabelas relacionais.
 
-### Diagrama Entidade-Relacionamento (DER)
+### Diagrama Conceitual
 
-<!-- Substituir pelo DER real quando disponivel -->
-![DER - Diagrama Entidade-Relacionamento](database/diagram/DER.png)
+![Diagrama Conceitual](Documenta%C3%A7%C3%A3o/Diagrama%20Conceitual%20BD.png)
 
-> Caso a imagem nao carregue, o arquivo esta em `database/diagram/DER.png` ou `database/diagram/DER.jpg`.
+### Diagrama Logico
+
+![Diagrama Logico](Documenta%C3%A7%C3%A3o/Diagrama%20Logico%20BD.png)
 
 ### Tabelas
 
